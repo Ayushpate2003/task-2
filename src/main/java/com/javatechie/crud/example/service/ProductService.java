@@ -32,6 +32,10 @@ public class ProductService {
         return repository.findByName(name);
     }
 
+    public List<Product> searchProductsByName(String name) {
+        return repository.findByNameContainingIgnoreCase(name);
+    }
+
     public String deleteProduct(int id) {
         repository.deleteById(id);
         return "product removed !! " + id;
@@ -39,11 +43,12 @@ public class ProductService {
 
     public Product updateProduct(Product product) {
         Product existingProduct = repository.findById(product.getId()).orElse(null);
-        existingProduct.setName(product.getName());
-        existingProduct.setQuantity(product.getQuantity());
-        existingProduct.setPrice(product.getPrice());
-        return repository.save(existingProduct);
+        if (existingProduct != null) {
+            existingProduct.setName(product.getName());
+            existingProduct.setQuantity(product.getQuantity());
+            existingProduct.setPrice(product.getPrice());
+            return repository.save(existingProduct);
+        }
+        return null;
     }
-
-
 }

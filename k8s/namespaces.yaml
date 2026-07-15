@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: catalogue-v1
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: catalogue-v1-1
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: catalogue-v2

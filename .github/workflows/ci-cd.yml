@@ -1,0 +1,134 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build with Maven (and Run Unit/Integration Tests)
+        run: mvn clean test
+
+  build-scan-push:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build the local Docker image
+      - name: Build Local Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: product-catalogue:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Run Trivy vulnerability scanner
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'product-catalogue:latest'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      # Login to Docker Hub
+      - name: Log in to Docker Hub
+        if: (github.event_name == 'push') && (env.DOCKERHUB_USERNAME != '')
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Determine image tags based on Git trigger
+      - name: Determine Image Metadata
+        id: meta
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="latest"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          DOCKER_REPO="${{ secrets.DOCKERHUB_USERNAME || 'myusername' }}/product-catalogue"
+          echo "repo=${DOCKER_REPO}" >> $GITHUB_OUTPUT
+
+      # Push image to registry
+      - name: Build and Push Tagged Image
+        if: (github.event_name == 'push') && (env.DOCKERHUB_USERNAME != '')
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.repo }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.repo }}:latest
+          cache-from: type=gha
+
+  deploy-and-smoke-test:
+    needs: build-scan-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Setup a Minikube cluster
+      - name: Setup Minikube
+        uses: medyagh/setup-minikube@master
+        with:
+          addons: ingress
+          container-runtime: docker
+
+      # Build the image directly inside Minikube's Docker daemon
+      - name: Build image in Minikube Daemon
+        run: |
+          eval $(minikube docker-env)
+          docker build -t product-catalogue:latest .
+
+      # Install cert-manager before applying overlays
+      - name: Install cert-manager
+        run: |
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+          echo "Waiting for cert-manager API to be ready..."
+          kubectl wait --namespace cert-manager \
+            --for=condition=ready pod \
+            --selector=app.kubernetes.io/instance=cert-manager \
+            --timeout=120s
+
+      # Deploy K8s resources using Kustomize
+      - name: Deploy Manifests
+        run: |
+          kubectl apply -k k8s/
+
+      # Run post-deployment smoke test suite
+      - name: Run Smoke Tests
+        run: |
+          ./scripts/smoke-test.sh

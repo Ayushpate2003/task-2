@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalogue-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: catalogue
+  template:
+    metadata:
+      labels:
+        app: catalogue
+    spec:
+      serviceAccountName: catalogue-service-account
+      automountServiceAccountToken: false
+      containers:
+        - name: catalogue-container
+          image: product-catalogue:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9191
+              name: http
+          env:
+            - name: PORT
+              value: "9191"
+            - name: APP_VERSION
+              value: "1.0"
+          # Resource requests and limits sized appropriately for a Java Spring Boot micro-pod
+          resources:
+            requests:
+              cpu: 150m
+              memory: 256Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9191
+            initialDelaySeconds: 20 # Spring Boot requires more initialization time than Node.js
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9191
+            initialDelaySeconds: 15
+            periodSeconds: 10
