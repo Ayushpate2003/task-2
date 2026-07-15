@@ -1,5 +1,5 @@
 # Stage 1: Build the JAR package
-FROM maven:3.8.8-openjdk-8-slim AS builder
+FROM maven:3.8.8-eclipse-temurin-8 AS builder
 
 WORKDIR /usr/src/app
 
@@ -14,7 +14,7 @@ COPY src ./src
 RUN mvn clean package -DskipTests
 
 # Stage 2: Minimal Runtime JRE
-FROM openjdk:8-jre-slim
+FROM eclipse-temurin:8-jre
 
 ENV NODE_ENV=production
 WORKDIR /usr/src/app
