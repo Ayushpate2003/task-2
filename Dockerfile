@@ -23,7 +23,7 @@ WORKDIR /usr/src/app
 COPY --from=builder /usr/src/app/target/*.jar app.jar
 
 # Create a non-root group and user for security hardening
-RUN /usr/sbin/groupadd -r spring && /usr/sbin/useradd -r -g spring -u 1000 spring
+RUN /usr/sbin/groupadd -r spring && /usr/sbin/useradd -r -g spring spring
 USER spring:spring
 
 # Expose default application port
