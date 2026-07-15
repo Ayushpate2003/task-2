@@ -16,6 +16,9 @@ RUN mvn clean package -DskipTests
 # Stage 2: Minimal Runtime JRE
 FROM eclipse-temurin:8-jre
 
+# Update and upgrade system packages to patch known vulnerabilities
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
 ENV NODE_ENV=production
 WORKDIR /usr/src/app
 
